@@ -1,0 +1,17 @@
+/* Admin Dashboard custom styles */
+/* Keep it minimal – white background, subtle gray borders */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #ffffff;
+    color: #1f2937; /* gray-800 */
+}
+/* Table styling overrides for Flowbite */
+.table-auto {
+    min-width: 100%;
+}
+/* Pagination */
+.pagination {
+    display: flex;
+    justify-content: center;
+    margin-top: 1rem;
+}
