@@ -107,6 +107,9 @@ Route::get('/forgot-password', [ForgotPasswordController::class, 'index'])->name
 Route::get('/order-notifications', [OrderNotificationController::class, 'index'])
     ->middleware('auth', 'isAdmin')
     ->name('order-notifications');
+Route::post('/order-notifications/settings', [OrderNotificationController::class, 'updateSettings'])
+    ->middleware('auth', 'isAdmin')
+    ->name('order-notifications-settings');
 
 // Route for admin
 Route::prefix('admin')->middleware('auth', 'isAdmin')->group(function () {

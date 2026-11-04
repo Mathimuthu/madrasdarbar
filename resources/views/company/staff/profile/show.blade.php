@@ -43,6 +43,8 @@
                         </div>
                     </div>
 
+                    @include('company.partials.notification-settings')
+
                     <div class="button">
                         <a href="{{ route('staff-profile-edit', Auth::user()->id) }}" class="edit"><span>Edit My Profile</span></a>
                         <a href="{{ route('staff-dashboard') }}" class="back"><span>Back</span></a>

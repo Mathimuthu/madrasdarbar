@@ -26,6 +26,8 @@
                     </div>
                 </div>
 
+                @include('company.partials.notification-settings')
+
                 <div class="profile-section">
 
                     <form action="{{ route('update-admin-profile', Auth::user()->id) }}" method="POST">

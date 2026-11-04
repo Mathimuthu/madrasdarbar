@@ -6,6 +6,7 @@ use App\Enums\OrderStatusEnum;
 use App\Models\CustomerOrder;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class OrderNotificationController extends Controller
@@ -55,5 +56,20 @@ class OrderNotificationController extends Controller
             'orders' => $orders,
             'orders_url' => $ordersUrl,
         ]);
+    }
+
+    /**
+     * Turn new order alerts on or off for the logged-in admin / staff.
+     */
+    public function updateSettings(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+        ]);
+
+        $user = Auth::user();
+        $user->update(['order_notifications' => $validated['enabled']]);
+
+        return response()->json(['enabled' => (bool) $user->order_notifications]);
     }
 }

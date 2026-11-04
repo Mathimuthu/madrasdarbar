@@ -31,6 +31,7 @@ class User extends Authenticatable
         'gender',
         'position',
         'role',
+        'order_notifications',
     ];
 
     /**
@@ -51,6 +52,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed',
+        'order_notifications' => 'boolean',
     ];
 
     public function staffAccount() : BelongsTo

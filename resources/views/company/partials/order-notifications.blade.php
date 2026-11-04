@@ -15,10 +15,27 @@
         <div id="onList" class="on-list">
             <div class="on-empty">No new orders</div>
         </div>
+        <label class="on-dropdown-foot" title="Popup, sound and desktop alerts for new orders">
+            <span>Order alerts</span>
+            <input type="checkbox" class="on-switch" id="onAlertsToggle" @checked(Auth::user()->order_notifications ?? true)>
+        </label>
     </div>
 </div>
 
 <div class="on-toasts" id="onToasts"></div>
+
+{{-- Friendly prompt to allow desktop notifications, so alerts also reach other tabs --}}
+<div class="on-ask" id="onAsk" hidden>
+    <i class='bx bxs-bell-ring'></i>
+    <div class="on-ask-text">
+        <strong>Get new order alerts on other tabs</strong>
+        <span>Allow notifications so you never miss an order, even when you are working in another tab.</span>
+        <div class="on-ask-actions">
+            <button type="button" class="on-ask-yes" id="onAskYes">Turn on</button>
+            <button type="button" class="on-ask-no" id="onAskNo">Not now</button>
+        </div>
+    </div>
+</div>
 
 <style>
     .on-bell-wrap { position: relative; display: inline-flex; align-items: center; margin-right: 14px; }
@@ -49,6 +66,22 @@
     tr[data-order-id] > td { transition: background-color .8s ease, box-shadow .8s ease; }
     tr.on-highlight > td { background-color: #ecfdf5 !important; animation: on-flash 1.2s ease-in-out 2; }
     tr.on-highlight > td:first-child { box-shadow: inset 4px 0 0 #10b981; }
+    .on-dropdown-foot { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-top: 1px solid #eee; font-size: 13px; color: #4b5563; cursor: pointer; }
+    /* Toggle switch, also used on the settings pages */
+    .on-switch { appearance: none; -webkit-appearance: none; position: relative; width: 38px; height: 22px; margin: 0; border-radius: 11px; background: #d1d5db; cursor: pointer; transition: background .2s; flex-shrink: 0; }
+    .on-switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: transform .2s; }
+    .on-switch:checked { background: #10b981; }
+    .on-switch:checked::after { transform: translateX(16px); }
+    .on-switch:disabled { opacity: .6; cursor: wait; }
+    .on-ask { position: fixed; bottom: 20px; right: 16px; z-index: 10001; display: flex; gap: 12px; width: 340px; max-width: calc(100vw - 32px); background: #fff; color: #1f2937; border-radius: 12px; box-shadow: 0 12px 34px rgba(0,0,0,.22); padding: 14px 16px; font-size: 14px; animation: on-slide .3s ease-out; }
+    .on-ask[hidden] { display: none; }
+    .on-ask > i { font-size: 26px; color: #10b981; }
+    .on-ask-text { display: flex; flex-direction: column; gap: 4px; }
+    .on-ask-text span { color: #4b5563; font-size: 13px; }
+    .on-ask-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .on-ask-actions button { border: 0; border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .on-ask-yes { background: #10b981; color: #fff; }
+    .on-ask-no { background: #f3f4f6; color: #374151; }
     @keyframes on-flash { 50% { background-color: #d1fae5; } }
     @keyframes on-slide { from { transform: translateX(110%); opacity: 0; } to { transform: none; opacity: 1; } }
     @keyframes on-ring { 0%,100% { transform: rotate(0); } 25% { transform: rotate(18deg); } 75% { transform: rotate(-18deg); } }
@@ -69,6 +102,16 @@
         const toasts = document.getElementById('onToasts');
         const viewAll = document.getElementById('onViewAll');
         const markAll = document.getElementById('onMarkAll');
+        const alertsToggle = document.getElementById('onAlertsToggle');
+        const ask = document.getElementById('onAsk');
+        const settingsUrl = @json(route('order-notifications-settings'));
+        const csrf = @json(csrf_token());
+        const askKey = 'order-ask-later-' + @json(Auth::id());
+        const ASK_AGAIN_MS = 3 * 24 * 60 * 60 * 1000;
+        const baseTitle = document.title;
+
+        // Alerts on/off is saved per user, so it follows them to any browser
+        let alertsOn = @json((bool) (Auth::user()->order_notifications ?? true));
 
         let ordersUrl = '#';
         let audioCtx = null;
@@ -157,7 +200,7 @@
         }
 
         function showDesktopNotification(order) {
-            if (!('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+            if (!alertsOn || !('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
             const n = new Notification('New order ' + (order.order_code || ''), { body: orderLine(order) });
             n.onclick = function () { window.focus(); openOrder(order); };
         }
@@ -173,6 +216,8 @@
             const unread = data.orders.filter(function (o) { return read.indexOf(o.id) === -1; });
             badge.hidden = unread.length === 0;
             badge.textContent = unread.length > 99 ? '99+' : unread.length;
+            // Unread count in the tab title, visible from other tabs
+            document.title = unread.length ? '(' + badge.textContent + ') ' + baseTitle : baseTitle;
             markAll.hidden = unread.length === 0;
 
             const notified = getNotified();
@@ -204,15 +249,18 @@
             });
 
             if (fresh.length > 0) {
-                // Oldest first so the newest toast ends up at the bottom
-                fresh.slice().reverse().forEach(function (order) {
-                    showToast(order);
-                    showDesktopNotification(order);
-                });
-                playSound();
-                bell.classList.remove('on-ring');
-                void bell.offsetWidth;
-                bell.classList.add('on-ring');
+                // Alerts off: the bell list and badge still update, but quietly
+                if (alertsOn) {
+                    // Oldest first so the newest toast ends up at the bottom
+                    fresh.slice().reverse().forEach(function (order) {
+                        showToast(order);
+                        showDesktopNotification(order);
+                    });
+                    playSound();
+                    bell.classList.remove('on-ring');
+                    void bell.offsetWidth;
+                    bell.classList.add('on-ring');
+                }
                 saveNotified(notified.concat(fresh.map(function (o) { return o.id; })));
             }
         }
@@ -224,12 +272,76 @@
                 .catch(function () {});
         }
 
+        // Ask the browser for permission (must come from a click)
+        function requestPermission() {
+            if (!('Notification' in window) || Notification.permission !== 'default') return Promise.resolve();
+            return Promise.resolve(Notification.requestPermission()).then(function () {
+                updateAsk();
+                document.dispatchEvent(new CustomEvent('order-alerts-changed', { detail: { enabled: alertsOn } }));
+            });
+        }
+
+        // Show the "Turn on" card while alerts are on but the browser hasn't been asked yet
+        function updateAsk() {
+            let later = 0;
+            try { later = parseInt(localStorage.getItem(askKey), 10) || 0; } catch (e) {}
+            ask.hidden = !(alertsOn && 'Notification' in window && Notification.permission === 'default'
+                && Date.now() - later > ASK_AGAIN_MS);
+        }
+
+        function applyEnabled(enabled) {
+            alertsOn = !!enabled;
+            alertsToggle.checked = alertsOn;
+            updateAsk();
+            document.dispatchEvent(new CustomEvent('order-alerts-changed', { detail: { enabled: alertsOn } }));
+        }
+
+        // Save the on/off choice on the server; used by the bell switch and the settings page
+        function setEnabled(enabled) {
+            const previous = alertsOn;
+            applyEnabled(enabled);
+            if (enabled) requestPermission();
+            return fetch(settingsUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ enabled: !!enabled })
+            }).then(function (res) {
+                if (!res.ok) throw new Error('save failed');
+                return res.json();
+            }).then(function (data) {
+                applyEnabled(data.enabled);
+                return data.enabled;
+            }).catch(function (err) {
+                applyEnabled(previous);
+                alert('Could not save the notification setting. Please try again.');
+                throw err;
+            });
+        }
+
+        window.orderAlerts = {
+            isEnabled: function () { return alertsOn; },
+            setEnabled: setEnabled,
+            requestPermission: requestPermission
+        };
+
+        alertsToggle.addEventListener('change', function () {
+            alertsToggle.disabled = true;
+            setEnabled(alertsToggle.checked).catch(function () {}).finally(function () { alertsToggle.disabled = false; });
+        });
+        document.getElementById('onAskYes').addEventListener('click', function () {
+            ask.hidden = true;
+            requestPermission();
+        });
+        document.getElementById('onAskNo').addEventListener('click', function () {
+            ask.hidden = true;
+            try { localStorage.setItem(askKey, String(Date.now())); } catch (e) {}
+        });
+
         bell.addEventListener('click', function (e) {
             e.stopPropagation();
             dropdown.hidden = !dropdown.hidden;
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
+            if (alertsOn) requestPermission();
         });
         markAll.addEventListener('click', function (e) {
             e.preventDefault();
@@ -255,6 +367,7 @@
             });
         }
 
+        updateAsk();
         poll();
         setInterval(poll, POLL_MS);
     })();
